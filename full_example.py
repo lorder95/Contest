@@ -2,13 +2,16 @@ import cv2
 from keras.models import Sequential
 from keras.callbacks import EarlyStopping, TensorBoard
 from keras.optimizers import SGD
+from keras.optimizers import Adam
+
 from keras.utils import to_categorical
 import numpy as np
 import os
 import time
 import matplotlib.pyplot as plt
 import pickle
-
+from sklearn.model_selection import train_test_split
+from keras.optimizers import RMSprop
 # User defined imports
 from data_loader import load_pk
 from MultiLayerPerceptron import PerceptronLayer
@@ -17,10 +20,10 @@ from score import score
 
 def extract_hog_features(X):
     # Parameters
-    winSize = (28, 28)
-    blockSize = (10, 10)
-    blockStride = (7, 7)
-    cellSize = (7, 7)
+    winSize = (128,128)
+    blockSize = (64, 64)
+    blockStride = (32, 32)
+    cellSize = (32,32)
     nbins = 9
     derivAperture = 1
     winSigma = 4.
@@ -37,9 +40,17 @@ def extract_hog_features(X):
                       1)**2 * nbins * (blockSize[0]/cellSize[0])**2)
 
     Xf = np.zeros((X.shape[0], output_dim))
+
+
     for i in range(X.shape[0]):
-        img = X[i].reshape((28, 28))
-        Xf[i, :] = hog.compute(img)[:, 0]
+
+        img = cv2.resize(X[i],(int(128),int(128)))
+        #cv2.imshow("image",img)
+        #print(img.shape)
+
+
+        #img = X[i].reshape((128, 128))
+        Xf[i, :] = hog.compute(img)[:,0]
 
     # parameters dict
     params = {
@@ -61,8 +72,21 @@ def extract_hog_features(X):
 
 if __name__ == "__main__":
     # Dataset loading
-    X, y_labels, Xv, yv_labels = load_pk()
-    n_classes = len(set(y_labels.tolist()))
+    data,labels= load_pk()
+
+    X, Xv, y_labels, yv_labels = train_test_split(np.asarray(data), np.asarray(labels), test_size=0.3, shuffle= True)
+
+
+    #print(y_labels[0],yv_labels[0])
+    #newimg = cv2.resize(X[0],(int(128),int(128)))
+    #cv2.imshow("image",newimg)
+    #cv2.waitKey(0)
+    #newimg = cv2.resize(Xv[0],(int(128),int(128)))
+    #cv2.imshow("image",newimg)
+    #cv2.waitKey(0)
+    #exit(0)
+
+    n_classes = 2
 
     # Features extraction
     X, input_shape, params_hog = extract_hog_features(X)
@@ -75,15 +99,15 @@ if __name__ == "__main__":
 
     # MLP parameters
     # The last value is the number of classes
-    layer_sizes = [1024, 1024, n_classes]
+    layer_sizes = [128,128, n_classes]
     # Available functions = step, tanh, sigmoid, softmax
-    act_funcs = ['sigmoid', 'sigmoid', 'softmax']
+    act_funcs = ['sigmoid', 'sigmoid', 'sigmoid']
     use_bias = [True, True, True]
-    batch_size = 20  # Siccome il training è con Stochastic gradient lo farò solo sul batch size(ovvero non su tt il training set ) più grande è meglio approssima la f di errore ma farlo troppo grande potrebbe causare overfitting
-    lr = 0.001       # Scala il valore del gradiente (evita l'overfitting)
+    batch_size = 1  # Siccome il training è con Stochastic gradient lo farò solo sul batch size(ovvero non su tt il training set ) più grande è meglio approssima la f di errore ma farlo troppo grande potrebbe causare overfitting
+    lr = 0.01       # Scala il valore del gradiente (evita l'overfitting)
     momentum = .9   # Evita i minimi locali , non uso il gradiente calcolato sul batch corrente , ma troppo grande rende più lento il trovare il minimo
-    decay = .0      # percentuale con cui diminuisco il Lr ad ogni epoca (Sempre per i minimi locali )
-    epochs = 1000
+    decay = .0001     # percentuale con cui diminuisco il Lr ad ogni epoca (Sempre per i minimi locali )
+    epochs = 100
     patience = 15    # Stoppa l'addestramento se c'è overfitting
 
     # MLP model
@@ -97,9 +121,9 @@ if __name__ == "__main__":
                             act=act_funcs[2], use_bias=use_bias[2]))
 
     # MLP optimizer
-    sgd_opt = SGD(lr=lr, momentum=momentum, decay=decay)
+    sgd_opt = Adam(lr=lr, beta_1=0.9, beta_2=0.999, epsilon=None, decay=decay, amsgrad=False)
     mlp.compile(optimizer=sgd_opt,
-                loss='categorical_crossentropy',
+                loss='binary_crossentropy',
                 metrics=['accuracy'])
 
     # Training Callbacks
